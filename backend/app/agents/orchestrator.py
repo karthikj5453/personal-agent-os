@@ -1,13 +1,18 @@
 """
-NEXUS Orchestrator — LangGraph Supervisor with Real GPT-4o-mini Intent Classification
+HEY Nexus Orchestrator — LangGraph Supervisor with "Boss" Persona & GPT-4o-mini Routing
 
-Full 5-Agent Swarm Topology:
+Persona Rules:
+  - Wake Word: "HEY Nexus" / "Nexus" → Immediate response: "Hey Boss."
+  - Greeting / Direct Response: Always address the user as "Boss".
+  - Tone: Professional, concise, calm, confident.
+
+5-Agent Swarm Topology:
   - EMAIL_TASK    → EmailSubagent
   - SYSTEM_TASK   → SystemSubagent
   - RESEARCH_TASK → ResearchSubagent (YouTube, PDF, Web Search)
   - WHATSAPP_TASK → WhatsAppSubagent (Gated Messaging)
   - VISION_TASK   → VisionSubagent (Mood & Emotion Detection)
-  - GENERAL_QUERY → Direct LLM Response
+  - GENERAL_QUERY → Direct LLM Response ("Boss" persona)
 """
 
 import json
@@ -36,15 +41,21 @@ else:
     llm = None
 
 SUPERVISOR_SYSTEM_PROMPT = """
-You are NEXUS Supervisor (Ops) — an intelligent routing supervisor for a Personal Agent OS.
+You are HEY Nexus — a futuristic, JARVIS-like Personal AI Operating System.
+
+MANDATORY PERSONA RULES:
+- ALWAYS address the user as "Boss".
+- When the user says "HEY Nexus", "Nexus", or "Hey Boss", respond immediately with "Hey Boss."
+- Tone must be calm, confident, concise, and executive.
 
 Classify the user's natural language command into one of these exact intent categories:
 {
-  "intent": "EMAIL_TASK" | "SYSTEM_TASK" | "RESEARCH_TASK" | "WHATSAPP_TASK" | "VISION_TASK" | "GENERAL_QUERY",
+  "intent": "WAKE_WORD" | "EMAIL_TASK" | "SYSTEM_TASK" | "RESEARCH_TASK" | "WHATSAPP_TASK" | "VISION_TASK" | "GENERAL_QUERY",
   "reasoning": "<1-2 sentence explanation>"
 }
 
 Routing Rules:
+- "HEY Nexus", "Nexus", "Hey Boss", "wake up" → WAKE_WORD
 - Email/inbox/mail/msg/draft/send email/Sarah/reply → EMAIL_TASK
 - Volume/sound/brightness/open app/launch/play song/youtube play/spotify/lock screen → SYSTEM_TASK
 - Summarize youtube/youtube transcript/summarize pdf/pdf document/search web/find research → RESEARCH_TASK
@@ -52,7 +63,7 @@ Routing Rules:
 - Mood/emotion/check mood/how do I look/webcam emotion → VISION_TASK
 - Anything else → GENERAL_QUERY
 
-Support Indic and Hinglish commands (e.g. "youtube summary dikhao", "whatsapp pe message bhejo", "mera mood check karo").
+Support Indic and Hinglish commands (e.g. "hey nexus mera inbox check karo", "boss volume 50 percent kar do").
 """
 
 
@@ -73,7 +84,9 @@ def _classify_intent_llm(query: str) -> Dict[str, Any]:
 
 
 def _classify_intent_fallback(query: str) -> Dict[str, Any]:
-    q = query.lower()
+    q = query.lower().strip()
+    if q in ["hey nexus", "nexus", "hey boss", "hi nexus"]:
+        return {"intent": "WAKE_WORD", "reasoning": "Wake word detected."}
     if any(k in q for k in ["whatsapp", "wa msg"]):
         return {"intent": "WHATSAPP_TASK", "reasoning": "WhatsApp keyword fallback."}
     if any(k in q for k in ["mood", "emotion", "webcam"]):
@@ -123,6 +136,22 @@ def supervisor_node(state: AgentState) -> Dict[str, Any]:
         requires_consent=False
     ))
 
+    # Wake Word response
+    if intent == "WAKE_WORD":
+        logs.append(AgentLogEntry(
+            agent="Supervisor (Ops)",
+            action="wake_word_ack",
+            details="Acknowledged HEY Nexus wake word -> Returning 'Hey Boss.'",
+            timestamp=timestamp,
+            requires_consent=False
+        ))
+        return {
+            "current_agent": "Supervisor (Ops)",
+            "next_step": "FINISH",
+            "logs": logs,
+            "final_output": "Hey Boss. Systems are online and ready for your command."
+        }
+
     intent_map = {
         "EMAIL_TASK": "EmailSubagent",
         "SYSTEM_TASK": "SystemSubagent",
@@ -138,7 +167,7 @@ def supervisor_node(state: AgentState) -> Dict[str, Any]:
         if _llm_available and llm is not None:
             try:
                 resp = llm.invoke([
-                    SystemMessage(content="You are NEXUS, a helpful Personal Agent OS. Answer concisely."),
+                    SystemMessage(content="You are HEY Nexus — an AI Operating System. Always address the user as 'Boss'. Answer concisely and confidently."),
                     HumanMessage(content=user_query)
                 ])
                 direct_response = resp.content
@@ -148,7 +177,7 @@ def supervisor_node(state: AgentState) -> Dict[str, Any]:
             "current_agent": "Supervisor (Ops)",
             "next_step": "FINISH",
             "logs": logs,
-            "final_output": direct_response or f"Intent recognized as {intent}."
+            "final_output": direct_response or f"Hey Boss, intent recognized as {intent}. All systems standing by."
         }
 
     return {
@@ -163,16 +192,18 @@ def response_merger_node(state: AgentState) -> Dict[str, Any]:
     logs = [AgentLogEntry(
         agent="Supervisor (Ops)",
         action="result_merge",
-        details="Subagent execution complete. Consolidating final response.",
+        details="Subagent execution complete. Consolidating final response for Boss.",
         timestamp=timestamp,
         requires_consent=False
     )]
-    final_output = state.get("final_output") or "Task processed successfully."
+    raw_output = state.get("final_output") or "Task processed successfully."
+    if "Boss" not in raw_output:
+        raw_output = f"Boss, {raw_output}"
     return {
         "current_agent": "Supervisor (Ops)",
         "next_step": "END",
         "logs": logs,
-        "final_output": final_output
+        "final_output": raw_output
     }
 
 

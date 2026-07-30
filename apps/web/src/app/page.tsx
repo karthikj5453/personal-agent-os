@@ -1,14 +1,16 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Radio, Send, RefreshCw, Cpu, Sun, Shield } from 'lucide-react';
+import { Radio, Send, RefreshCw, Cpu, Sun, Shield, Command, Monitor, Code, Search, Target, Sparkles, Volume2, Camera } from 'lucide-react';
 import NodeGraph from '@/components/NodeGraph';
 import TerminalStrip, { LogEntry } from '@/components/TerminalStrip';
 import EmailInspector, { EmailItem } from '@/components/EmailInspector';
 import ConsentLedger, { ConsentEntry } from '@/components/ConsentLedger';
 import VoiceInput from '@/components/VoiceInput';
 import WebcamFeed from '@/components/WebcamFeed';
-import { Camera } from 'lucide-react';
+import BootSequence from '@/components/BootSequence';
+import ThreeGlobe from '@/components/ThreeGlobe';
+import CommandPalette from '@/components/CommandPalette';
 
 interface HealthData {
   status: string;
@@ -24,11 +26,16 @@ interface MorningBrief {
   pending_consent_count: number;
 }
 
+type OSMode = 'ALL' | 'CODING' | 'RESEARCH' | 'FOCUS';
+
 export default function Home() {
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
 
-  // System State
+  // Boot & System State
+  const [booting, setBooting] = useState(true);
+  const [osMode, setOsMode] = useState<OSMode>('ALL');
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
   const [morningBrief, setMorningBrief] = useState<MorningBrief | null>(null);
@@ -36,24 +43,34 @@ export default function Home() {
   const [showCamera, setShowCamera] = useState(false);
 
   // Agent Execution State
-  const [prompt, setPrompt] = useState('Check my inbox for urgent messages');
+  const [prompt, setPrompt] = useState('HEY Nexus');
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const [agentFlow, setAgentFlow] = useState<string[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [finalOutput, setFinalOutput] = useState<string | null>(null);
+  const [finalOutput, setFinalOutput] = useState<string | null>("Hey Boss. Systems are online and standing by.");
 
-  // Email State
+  // Email & Consent State
   const [emails, setEmails] = useState<EmailItem[]>([]);
   const [drafts, setDrafts] = useState<EmailItem[]>([]);
-
-  // Consent Ledger State
   const [consentEntries, setConsentEntries] = useState<ConsentEntry[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
 
   // WebSocket ref
   const wsRef = useRef<WebSocket | null>(null);
   const [wsConnected, setWsConnected] = useState(false);
+
+  // ─── Global Keyboard Shortcuts (CTRL + SPACE) ───────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.code === 'Space') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // ─── WebSocket Setup ────────────────────────────────────
   const connectWebSocket = useCallback(() => {
@@ -75,16 +92,13 @@ export default function Home() {
           setLogs(prev => [...prev, msg.payload]);
         }
         if (msg.type === 'execution_complete') {
-          const { final_output, agent_flow, email_context, consent_pending } = msg.payload;
+          const { final_output, agent_flow, consent_pending } = msg.payload;
           setFinalOutput(final_output);
           setAgentFlow(agent_flow || []);
           setIsProcessing(false);
           setActiveNode(null);
 
-          // Refresh consent ledger if a gate was created
-          if (consent_pending) {
-            fetchConsentLedger();
-          }
+          if (consent_pending) fetchConsentLedger();
           fetchEmails();
         }
         if (msg.type === 'error') {
@@ -95,12 +109,7 @@ export default function Home() {
 
       ws.onclose = () => {
         setWsConnected(false);
-        // Reconnect after 2s
         setTimeout(connectWebSocket, 2000);
-      };
-
-      ws.onerror = () => {
-        ws.close();
       };
     } catch (e) {
       setWsConnected(false);
@@ -161,7 +170,6 @@ export default function Home() {
     fetchHealth();
     fetchEmails();
     fetchConsentLedger();
-    // Poll consent ledger every 5s for live pending gate updates
     const interval = setInterval(fetchConsentLedger, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -173,13 +181,10 @@ export default function Home() {
 
     setIsProcessing(true);
     setActiveNode('Supervisor (Ops)');
-    setFinalOutput(null);
 
     if (wsConnected && wsRef.current?.readyState === WebSocket.OPEN) {
-      // Stream via WebSocket for live node graph animation
       wsRef.current.send(JSON.stringify({ type: 'execute_query', query: targetQuery }));
     } else {
-      // Fallback to REST API
       try {
         const res = await fetch(`${API_URL}/api/v1/agent/query`, {
           method: 'POST',
@@ -205,7 +210,6 @@ export default function Home() {
     }
   };
 
-  // ─── Consent Actions ──────────────────────────────────────
   const handleApprove = async (id: string) => {
     try {
       await fetch(`${API_URL}/api/v1/consent/approve/${id}`, { method: 'POST' });
@@ -221,8 +225,30 @@ export default function Home() {
     } catch {}
   };
 
+  // Render Boot Sequence
+  if (booting) {
+    return <BootSequence onComplete={() => setBooting(false)} />;
+  }
+
   return (
-    <main className="min-h-screen bg-[#090d16] text-slate-100 p-4 md:p-8 font-sans">
+    <main className="min-h-screen bg-[#05070d] text-slate-100 p-4 md:p-8 font-sans selection:bg-indigo-500 selection:text-white">
+
+      {/* Command Palette Overlay (CTRL + SPACE) */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onSelectCommand={(cmd) => {
+          setPrompt(cmd);
+          handleExecuteQuery(cmd);
+        }}
+      />
+
+      {/* Webcam Feed Modal Overlay */}
+      {showCamera && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <WebcamFeed apiUrl={API_URL} onClose={() => setShowCamera(false)} />
+        </div>
+      )}
 
       {/* Morning Brief Banner */}
       {showBrief && morningBrief && (
@@ -230,29 +256,22 @@ export default function Home() {
           <div className="relative bg-indigo-950/60 border border-indigo-500/30 rounded-2xl p-4 font-mono text-xs text-slate-300 shadow-xl">
             <button onClick={() => setShowBrief(false)} className="absolute top-3 right-4 text-slate-500 hover:text-slate-300">✕</button>
             <div className="text-indigo-400 font-semibold mb-2 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
-              <Sun className="w-3.5 h-3.5" /> Morning Intelligence Brief
+              <Sun className="w-3.5 h-3.5" /> Morning Intelligence Brief — Boss Edition
             </div>
             <pre className="whitespace-pre-wrap leading-relaxed text-slate-300">{morningBrief.brief_text}</pre>
           </div>
         </div>
       )}
 
-      {/* Webcam Feed Modal */}
-      {showCamera && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <WebcamFeed apiUrl={API_URL} onClose={() => setShowCamera(false)} />
-        </div>
-      )}
-
-      {/* ── Header ─────────────────────────────────────────── */}
+      {/* ── Header Bar ─────────────────────────────────────────── */}
       <header className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center pb-6 border-b border-slate-800/80 gap-4">
         <div>
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-2xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-cyan-400 to-emerald-400">
-              NEXUS
+              HEY Nexus
             </h1>
             <span className="px-2.5 py-0.5 text-xs font-mono font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-full">
-              MISSION CONTROL v2.0
+              JARVIS AI OS v2.5
             </span>
             {wsConnected && (
               <span className="px-2.5 py-0.5 text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center gap-1">
@@ -265,22 +284,28 @@ export default function Home() {
               </span>
             )}
           </div>
-          <p className="text-slate-400 text-xs mt-1">
-            LangGraph Swarm • Sarvam Indic Voice • Consent Ledger • Morning Brief
+          <p className="text-slate-400 text-xs mt-1 font-mono">
+            Welcome back, <span className="text-cyan-400 font-bold">Boss</span> • 5-Agent Swarm • Sarvam Indic Voice • Consent Ledger
           </p>
         </div>
 
+        {/* Top Header Actions */}
         <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => setIsCommandPaletteOpen(true)}
+            className="px-3 py-2 bg-indigo-950/60 border border-indigo-500/30 rounded-xl text-xs font-mono text-indigo-300 hover:border-indigo-400 transition-all flex items-center gap-1.5 shadow-lg shadow-indigo-500/10"
+          >
+            <Command className="w-3.5 h-3.5 text-indigo-400" /> CTRL + SPACE
+          </button>
+
           <button onClick={() => setShowCamera(!showCamera)} className="px-3 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs font-mono text-slate-300 hover:text-pink-400 hover:border-pink-500/30 transition-colors flex items-center gap-1.5">
             <Camera className="w-3.5 h-3.5 text-pink-400" /> Camera Feed
           </button>
+
           <button onClick={fetchMorningBrief} className="px-3 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs font-mono text-slate-300 hover:text-yellow-400 hover:border-yellow-500/30 transition-colors flex items-center gap-1.5">
             <Sun className="w-3.5 h-3.5 text-yellow-400" /> Morning Brief
           </button>
-          <button onClick={() => { fetchHealth(); fetchEmails(); fetchConsentLedger(); }}
-            className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 transition-colors">
-            <RefreshCw className="w-4 h-4" />
-          </button>
+
           <div className="flex items-center gap-3 bg-slate-900/90 border border-slate-800 px-4 py-2 rounded-xl shadow-md">
             <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
             <div className="text-xs font-mono">
@@ -293,18 +318,48 @@ export default function Home() {
         </div>
       </header>
 
-      {/* ── Main Grid ──────────────────────────────────────── */}
-      <div className="max-w-7xl mx-auto space-y-6 mt-6">
+      {/* ── Mode Selector Bar ───────────────────────────────── */}
+      <div className="max-w-7xl mx-auto mt-4 flex items-center justify-between bg-slate-900/40 border border-slate-800/80 p-2 rounded-2xl">
+        <div className="flex items-center gap-2 font-mono text-xs">
+          {[
+            { mode: 'ALL' as OSMode, label: '⚡ All Swarm', icon: Sparkles },
+            { mode: 'CODING' as OSMode, label: '🛠 Coding Mode', icon: Code },
+            { mode: 'RESEARCH' as OSMode, label: '🔬 Research Mode', icon: Search },
+            { mode: 'FOCUS' as OSMode, label: '🎯 Focus Mode', icon: Target },
+          ].map(({ mode, label, icon: Icon }) => (
+            <button
+              key={mode}
+              onClick={() => setOsMode(mode)}
+              className={`px-3.5 py-1.5 rounded-xl font-semibold transition-all flex items-center gap-1.5 ${
+                osMode === mode
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/80'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="text-xs font-mono text-slate-500 hidden md:block">
+          Owner: <span className="text-slate-300 font-bold">Karthik (Boss)</span>
+        </div>
+      </div>
+
+      {/* ── Main Workspace Grid ─────────────────────────────── */}
+      <div className="max-w-7xl mx-auto space-y-6 mt-5">
 
         {/* Command Dispatcher */}
         <section className="bg-slate-900/80 border border-slate-800/90 rounded-2xl p-5 shadow-2xl backdrop-blur-md">
-          <div className="flex items-center gap-2 mb-3">
-            <Cpu className="w-4 h-4 text-indigo-400" />
-            <span className="text-xs font-mono font-semibold tracking-wider text-slate-300 uppercase">
-              Command Dispatcher
-            </span>
-            <span className="text-[10px] font-mono text-slate-500 ml-2">
-              Type or use Push-to-Talk (Hindi / Telugu / Tamil / Kannada / English)
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-indigo-400" />
+              <span className="text-xs font-mono font-semibold tracking-wider text-slate-300 uppercase">
+                JARVIS Command Dispatcher
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-slate-500">
+              Speak "HEY Nexus" or type command for Boss
             </span>
           </div>
 
@@ -314,7 +369,7 @@ export default function Home() {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleExecuteQuery()}
-              placeholder="e.g. 'Mera inbox check karo' or 'Draft a reply to Sarah'..."
+              placeholder="e.g. 'HEY Nexus' or 'Volume 50 percent kar do Boss'..."
               className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono transition-colors"
             />
             <button
@@ -345,6 +400,7 @@ export default function Home() {
             />
             <div className="h-5 w-px bg-slate-800" />
             {[
+              { label: 'HEY Nexus Wake', q: 'HEY Nexus' },
               { label: 'Urgent Inbox', q: 'Check my inbox for urgent messages' },
               { label: 'Set Volume 50%', q: 'Volume 50 percent kar do' },
               { label: 'Summarize YouTube', q: 'Summarize youtube video https://youtube.com/watch?v=dQw4w9WgXcQ' },
@@ -363,11 +419,16 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Live Visualizers: Node Graph + Terminal Strip */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <NodeGraph activeNode={activeNode} agentFlow={agentFlow} isProcessing={isProcessing} />
-          <TerminalStrip logs={logs} isProcessing={isProcessing} />
+        {/* Visualizers Grid: 3D Globe + Node Graph + Terminal */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <ThreeGlobe />
+          <div className="lg:col-span-2">
+            <NodeGraph activeNode={activeNode} agentFlow={agentFlow} isProcessing={isProcessing} />
+          </div>
         </div>
+
+        {/* Terminal Trace Log Strip */}
+        <TerminalStrip logs={logs} isProcessing={isProcessing} />
 
         {/* Consent Ledger */}
         <ConsentLedger
@@ -376,12 +437,12 @@ export default function Home() {
           onReject={handleReject}
         />
 
-        {/* Bottom Row: Orchestrator Output + Email Inspector */}
+        {/* Orchestrator Output + Email Inspector */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="bg-slate-900/60 border border-slate-800/90 rounded-2xl p-6 shadow-xl backdrop-blur-sm">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold tracking-wider text-slate-300 uppercase flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-indigo-400" /> Orchestrator Output
+              <h2 className="text-sm font-semibold tracking-wider text-slate-300 uppercase flex items-center gap-2 font-mono">
+                <Cpu className="w-4 h-4 text-indigo-400" /> HEY Nexus Response
               </h2>
             </div>
             {finalOutput ? (
@@ -390,7 +451,7 @@ export default function Home() {
               </div>
             ) : (
               <div className="p-8 bg-slate-950/40 border border-slate-800/50 rounded-xl text-center text-xs font-mono text-slate-600">
-                Dispatch a query to view consolidated response.
+                Dispatch a command to view response for Boss.
               </div>
             )}
           </div>
@@ -399,6 +460,7 @@ export default function Home() {
             <EmailInspector emails={emails} drafts={drafts} onRefresh={fetchEmails} />
           </div>
         </div>
+
       </div>
     </main>
   );
