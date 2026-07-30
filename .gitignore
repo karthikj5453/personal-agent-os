@@ -1,0 +1,41 @@
+# Node
+node_modules/
+.next/
+dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/settings.json
+
+# Coverage
+coverage/
+
+# Build
+build/
+
+# Docker
+*.pid
+
+# Cache
+.cache/
+
+# Pytest
+.pytest_cache/
+
+# Mypy
+.mypy_cache/
