@@ -11,6 +11,7 @@ import WebcamFeed from '@/components/WebcamFeed';
 import BootSequence from '@/components/BootSequence';
 import ThreeGlobe from '@/components/ThreeGlobe';
 import CommandPalette from '@/components/CommandPalette';
+import VoiceOverlay from '@/components/VoiceOverlay';
 
 interface HealthData {
   status: string;
@@ -36,6 +37,7 @@ export default function Home() {
   const [booting, setBooting] = useState(true);
   const [osMode, setOsMode] = useState<OSMode>('ALL');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isVoiceOverlayOpen, setIsVoiceOverlayOpen] = useState(false);
   const [isVoiceOutputEnabled, setIsVoiceOutputEnabled] = useState(true);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
@@ -246,6 +248,18 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#05070d] text-slate-100 p-4 md:p-8 font-sans selection:bg-indigo-500 selection:text-white">
 
+      {/* Voice Overlay (Full-screen JARVIS Holographic Arc Core HUD) */}
+      <VoiceOverlay
+        isOpen={isVoiceOverlayOpen}
+        onClose={() => setIsVoiceOverlayOpen(false)}
+        isProcessing={isProcessing}
+        finalOutput={finalOutput}
+        onTranscript={(text) => {
+          setPrompt(text);
+          handleExecuteQuery(text);
+        }}
+      />
+
       {/* Command Palette Overlay (CTRL + SPACE) */}
       <CommandPalette
         isOpen={isCommandPaletteOpen}
@@ -304,6 +318,13 @@ export default function Home() {
 
         {/* Top Header Actions */}
         <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => setIsVoiceOverlayOpen(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 border border-cyan-400/50 rounded-xl text-xs font-mono font-bold text-white transition-all flex items-center gap-2 shadow-lg shadow-cyan-500/20 hover:scale-105 active:scale-95"
+          >
+            <Sparkles className="w-4 h-4 text-cyan-200 animate-pulse" /> 🎙 JARVIS Voice HUD
+          </button>
+
           <button
             onClick={() => setIsVoiceOutputEnabled(!isVoiceOutputEnabled)}
             className={`px-3 py-2 border rounded-xl text-xs font-mono transition-all flex items-center gap-1.5 ${
