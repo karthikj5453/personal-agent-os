@@ -5,15 +5,18 @@ from app.api.v1.api import api_router
 from app.api.v1 import ws
 from app.core.config import settings
 from app.db.init_db import init_db
+from app.core.scheduler import start_scheduler, shutdown_scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown events."""
-    # Startup: Initialize Database Tables & Seed Data
+    # Startup: Initialize Database Tables & Start Background Scheduler
     init_db()
+    start_scheduler()
     yield
-    # Shutdown: Cleanup resources if needed
+    # Shutdown: Stop background cron scheduler
+    shutdown_scheduler()
 
 
 app = FastAPI(
@@ -49,8 +52,9 @@ def root():
             "Observable Cognition (Live Node Graph + WebSocket Streaming)",
             "Sarvam Indic Voice Pipeline (Saarika ASR + Bulbul TTS)",
             "Accountable Autonomy (Consent Ledger)",
-            "Morning Intelligence Brief",
-            "PostgreSQL Database Persistence"
+            "Morning Intelligence Brief (APScheduler Cron at 08:00 IST)",
+            "PostgreSQL Database Persistence",
+            "Live Webcam Vision AI"
         ],
         "docs": "/docs",
         "health": f"{settings.API_V1_STR}/health",
