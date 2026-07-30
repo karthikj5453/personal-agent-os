@@ -9,6 +9,8 @@ client = TestClient(app)
 
 def test_email_service():
     """Verify mock email service inbox and tools."""
+    from app.db.init_db import init_db
+    init_db()
     emails = email_service.list_emails()
     assert len(emails) > 0
 

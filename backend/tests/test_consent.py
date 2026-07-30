@@ -2,6 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.services.consent_ledger import ConsentLedgerService
+from app.db.init_db import init_db
+
+init_db()
 
 client = TestClient(app)
 

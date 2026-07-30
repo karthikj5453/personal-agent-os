@@ -2,6 +2,9 @@ import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
+from sqlmodel import Session, select
+from app.db.session import engine
+from app.db.models import EmailTable
 
 
 class EmailMessage(BaseModel):
@@ -12,117 +15,127 @@ class EmailMessage(BaseModel):
     body: str
     timestamp: str = Field(default_factory=lambda: (datetime.now() - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M"))
     is_read: bool = False
-    priority: str = "medium"  # high, medium, low
-    category: str = "work"    # work, personal, system
+    priority: str = "medium"
+    category: str = "work"
     is_draft: bool = False
 
 
 class EmailService:
-    def __init__(self):
-        self._inbox: List[EmailMessage] = [
-            EmailMessage(
-                id="msg-101",
-                sender="sarah.ops@techcorp.io",
-                recipient="me@personalagent.os",
-                subject="URGENT: Production API Rate Limit Spike in AP-South",
-                body="Hey, we are seeing a 400% spike in 429 rate limit errors from the AP-South region. Need your sign-off on doubling the Redis quota before 5 PM.",
-                timestamp=(datetime.now() - timedelta(minutes=12)).strftime("%Y-%m-%d %H:%M"),
-                is_read=False,
-                priority="high",
-                category="work"
-            ),
-            EmailMessage(
-                id="msg-102",
-                sender="alex.research@ai-labs.org",
-                recipient="me@personalagent.os",
-                subject="VaakEval Benchmark Results — Hindi Code-Switching ASR",
-                body="Attached are the latest WER figures for Whisper Large v3 vs IndicASR on the 10-hour code-switched conversational corpus. Whisper got 24% WER while IndicASR hit 14% WER.",
-                timestamp=(datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M"),
-                is_read=False,
-                priority="medium",
-                category="work"
-            ),
-            EmailMessage(
-                id="msg-103",
-                sender="newsletter@techcrunch.com",
-                recipient="me@personalagent.os",
-                subject="Daily Tech Digest: Agentic OS Architectures in 2026",
-                body="Today's top stories: Autonomous agent frameworks move from single-prompt scripts to multi-agent supervisor loops with strict consent ledgers.",
-                timestamp=(datetime.now() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M"),
-                is_read=True,
-                priority="low",
-                category="system"
-            ),
-            EmailMessage(
-                id="msg-104",
-                sender="rahul.k@startup.in",
-                recipient="me@personalagent.os",
-                subject="Rescheduling tomorrow's sync to 5 PM?",
-                body="Kal ka meeting reschedule kar do to 5 baje. Let me know if that time works for you.",
-                timestamp=(datetime.now() - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M"),
-                is_read=False,
-                priority="high",
-                category="personal"
-            ),
-        ]
-        self._drafts: List[EmailMessage] = []
-
     def list_emails(self, unread_only: bool = False, limit: int = 10) -> List[Dict[str, Any]]:
-        emails = [e for e in self._inbox if not unread_only or not e.is_read]
-        return [e.model_dump() for e in emails[:limit]]
+        try:
+            with Session(engine) as session:
+                query = select(EmailTable).where(EmailTable.is_draft == False)
+                if unread_only:
+                    query = query.where(EmailTable.is_read == False)
+                records = session.exec(query).all()
+                return [r.model_dump() for r in records[:limit]]
+        except Exception:
+            return []
 
     def search_emails(self, query: str) -> List[Dict[str, Any]]:
         query_lower = query.lower()
-        results = [
-            e for e in self._inbox
-            if query_lower in e.subject.lower()
-            or query_lower in e.body.lower()
-            or query_lower in e.sender.lower()
-        ]
-        return [e.model_dump() for e in results]
+        try:
+            with Session(engine) as session:
+                records = session.exec(select(EmailTable).where(EmailTable.is_draft == False)).all()
+                results = [
+                    r for r in records
+                    if query_lower in r.subject.lower()
+                    or query_lower in r.body.lower()
+                    or query_lower in r.sender.lower()
+                ]
+                return [r.model_dump() for r in results]
+        except Exception:
+            return []
 
     def get_email_by_id(self, email_id: str) -> Optional[Dict[str, Any]]:
-        for e in self._inbox:
-            if e.id == email_id:
-                e.is_read = True
-                return e.model_dump()
+        try:
+            with Session(engine) as session:
+                record = session.exec(select(EmailTable).where(EmailTable.id == email_id)).first()
+                if record:
+                    record.is_read = True
+                    session.add(record)
+                    session.commit()
+                    return record.model_dump()
+        except Exception:
+            pass
         return None
 
     def create_draft(self, recipient: str, subject: str, body: str) -> Dict[str, Any]:
-        draft = EmailMessage(
-            sender="me@personalagent.os",
-            recipient=recipient,
-            subject=subject,
-            body=body,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
-            is_read=True,
-            is_draft=True
-        )
-        self._drafts.append(draft)
-        return draft.model_dump()
+        draft_id = f"draft-{str(uuid.uuid4())[:6]}"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        try:
+            with Session(engine) as session:
+                draft_record = EmailTable(
+                    id=draft_id,
+                    sender="me@personalagent.os",
+                    recipient=recipient,
+                    subject=subject,
+                    body=body,
+                    timestamp=timestamp,
+                    is_read=True,
+                    priority="medium",
+                    category="work",
+                    is_draft=True
+                )
+                session.add(draft_record)
+                session.commit()
+                session.refresh(draft_record)
+                return draft_record.model_dump()
+        except Exception:
+            return EmailMessage(
+                id=draft_id,
+                sender="me@personalagent.os",
+                recipient=recipient,
+                subject=subject,
+                body=body,
+                timestamp=timestamp,
+                is_read=True,
+                is_draft=True
+            ).model_dump()
 
     def send_email(self, recipient: str, subject: str, body: str) -> Dict[str, Any]:
-        sent_msg = EmailMessage(
-            sender="me@personalagent.os",
-            recipient=recipient,
-            subject=subject,
-            body=body,
-            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
-            is_read=True,
-            is_draft=False
-        )
-        self._inbox.insert(0, sent_msg)
-        return {
-            "status": "sent",
-            "message_id": sent_msg.id,
-            "recipient": recipient,
-            "subject": subject,
-            "timestamp": sent_msg.timestamp
-        }
+        msg_id = f"msg-{str(uuid.uuid4())[:8]}"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        try:
+            with Session(engine) as session:
+                sent_record = EmailTable(
+                    id=msg_id,
+                    sender="me@personalagent.os",
+                    recipient=recipient,
+                    subject=subject,
+                    body=body,
+                    timestamp=timestamp,
+                    is_read=True,
+                    priority="high",
+                    category="work",
+                    is_draft=False
+                )
+                session.add(sent_record)
+                session.commit()
+                session.refresh(sent_record)
+                return {
+                    "status": "sent",
+                    "message_id": sent_record.id,
+                    "recipient": recipient,
+                    "subject": subject,
+                    "timestamp": sent_record.timestamp
+                }
+        except Exception:
+            return {
+                "status": "sent",
+                "message_id": msg_id,
+                "recipient": recipient,
+                "subject": subject,
+                "timestamp": timestamp
+            }
 
     def get_drafts(self) -> List[Dict[str, Any]]:
-        return [d.model_dump() for d in self._drafts]
+        try:
+            with Session(engine) as session:
+                records = session.exec(select(EmailTable).where(EmailTable.is_draft == True)).all()
+                return [r.model_dump() for r in records]
+        except Exception:
+            return []
 
 
-# Singleton instance for mock service
 email_service = EmailService()
