@@ -37,18 +37,10 @@ manager = ConnectionManager()
 @router.websocket("/agent-stream")
 async def agent_stream_ws(websocket: WebSocket):
     """
-    WebSocket endpoint for real-time LangGraph node trace streaming.
-    The frontend NodeGraph subscribes here to receive live node activation events.
-
-    Message format:
-    {
-        "type": "node_activation" | "log_entry" | "execution_complete" | "ping",
-        "payload": { ... }
-    }
+    WebSocket endpoint for real-time LangGraph node trace streaming and terminal logging.
     """
     await manager.connect(websocket)
     try:
-        # Send connection acknowledgement
         await manager.send_event(websocket, {
             "type": "connected",
             "payload": {
@@ -58,7 +50,6 @@ async def agent_stream_ws(websocket: WebSocket):
         })
 
         while True:
-            # Receive query from frontend
             raw = await websocket.receive_text()
             data = json.loads(raw)
 
@@ -69,7 +60,10 @@ async def agent_stream_ws(websocket: WebSocket):
             if data.get("type") == "execute_query":
                 query = data.get("query", "")
 
-                # Stream: Supervisor activation
+                print("\n" + "=" * 64)
+                print(f"🤖 HEY NEXUS COMMAND FROM BOSS: \"{query}\"")
+                print("-" * 64)
+
                 await manager.send_event(websocket, {
                     "type": "node_activation",
                     "payload": {"node": "Supervisor (Ops)", "status": "active", "timestamp": datetime.now().isoformat()}
@@ -77,12 +71,9 @@ async def agent_stream_ws(websocket: WebSocket):
 
                 await asyncio.sleep(0.1)
 
-                # Run LangGraph orchestrator
                 result = run_orchestrator(query)
 
-                # Stream each log entry with short delay for visual effect
                 for log in result.get("logs", []):
-                    # If EmailSubagent log, notify node activation
                     if "Email" in log.get("agent", ""):
                         await manager.send_event(websocket, {
                             "type": "node_activation",
@@ -94,7 +85,6 @@ async def agent_stream_ws(websocket: WebSocket):
                     })
                     await asyncio.sleep(0.08)
 
-                # Stream: Return to Supervisor
                 await manager.send_event(websocket, {
                     "type": "node_activation",
                     "payload": {"node": "Supervisor (Ops)", "status": "active", "timestamp": datetime.now().isoformat()}
@@ -102,11 +92,14 @@ async def agent_stream_ws(websocket: WebSocket):
 
                 await asyncio.sleep(0.1)
 
-                # Stream: Completion
+                final_out = result.get("final_output", "")
+                print(f"📢 HEY NEXUS RESPONSE TO BOSS:\n   {final_out}")
+                print("=" * 64 + "\n")
+
                 await manager.send_event(websocket, {
                     "type": "execution_complete",
                     "payload": {
-                        "final_output": result.get("final_output", ""),
+                        "final_output": final_out,
                         "agent_flow": result.get("agent_flow", []),
                         "email_context": result.get("email_context", []),
                         "consent_pending": result.get("consent_pending"),

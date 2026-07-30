@@ -25,7 +25,12 @@ def execute_agent_query(request: AgentQueryRequest):
         raise HTTPException(status_code=400, detail="Query string cannot be empty.")
     
     try:
+        print("\n" + "=" * 64)
+        print(f"🤖 HEY NEXUS REST COMMAND FROM BOSS: \"{request.query}\"")
+        print("-" * 64)
         result = run_orchestrator(request.query)
+        print(f"📢 HEY NEXUS RESPONSE TO BOSS:\n   {result.get('final_output', '')}")
+        print("=" * 64 + "\n")
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent execution error: {str(e)}")

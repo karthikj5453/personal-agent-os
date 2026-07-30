@@ -471,6 +471,14 @@ export default function Home() {
               <h2 className="text-sm font-semibold tracking-wider text-slate-300 uppercase flex items-center gap-2 font-mono">
                 <Cpu className="w-4 h-4 text-indigo-400" /> HEY Nexus Response
               </h2>
+              {finalOutput && (
+                <button
+                  onClick={() => speakText(finalOutput)}
+                  className="px-2.5 py-1 bg-indigo-950/80 border border-indigo-500/30 hover:border-indigo-400 rounded-lg text-[10px] font-mono text-indigo-300 transition-colors flex items-center gap-1"
+                >
+                  <Volume2 className="w-3 h-3 text-emerald-400" /> Speak Out Loud
+                </button>
+              )}
             </div>
             {finalOutput ? (
               <div className="p-4 bg-slate-950/90 border border-indigo-500/30 rounded-xl font-mono text-xs text-slate-200 whitespace-pre-wrap leading-relaxed shadow-inner">
