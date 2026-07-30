@@ -333,9 +333,11 @@ export default function Home() {
             <div className="h-5 w-px bg-slate-800" />
             {[
               { label: 'Urgent Inbox', q: 'Check my inbox for urgent messages' },
+              { label: 'Set Volume 50%', q: 'Volume 50 percent kar do' },
+              { label: 'Play Lo-fi YouTube', q: 'Play Lo-fi beats on YouTube' },
               { label: 'Draft Reply Sarah', q: 'Draft a reply to Sarah regarding Redis rate limit' },
-              { label: 'Send Email', q: 'Send an email to Sarah approving the Redis quota increase' },
-              { label: 'Search VaakEval', q: 'Search emails for VaakEval benchmark results' },
+              { label: 'Send Email (Gate)', q: 'Send an email to Sarah approving the Redis quota increase' },
+              { label: 'Lock Desktop (Gate)', q: 'Lock my computer' },
             ].map(({ label, q }) => (
               <button
                 key={label}
