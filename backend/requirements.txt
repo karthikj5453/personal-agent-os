@@ -12,8 +12,18 @@ python-dotenv>=1.0.0
 sqlmodel>=0.0.16
 alembic>=1.13.0
 
-# System Hardware Metrics & Desktop
+# Desktop Automation & Hardware Metrics
 psutil>=5.9.8
+pyautogui>=0.9.54
+pillow>=10.2.0
+
+# Google OAuth2 & Gmail / Calendar API
+google-api-python-client>=2.118.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+
+# WhatsApp Gateway
+twilio>=9.0.0
 
 # LangGraph & AI Framework
 langgraph>=0.0.26
