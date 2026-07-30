@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Mic, MicOff, Loader2, Globe } from 'lucide-react';
+import { Mic, MicOff, Loader2, Globe, Radio } from 'lucide-react';
 
 interface VoiceInputProps {
   onTranscript: (text: string, languageCode: string) => void;
@@ -16,9 +16,12 @@ const LANGUAGE_OPTIONS = [
   { code: 'en-IN', label: 'English', flag: '🇬🇧' },
 ];
 
+const WAKE_WORDS = ['nexus', 'hey nexus', 'hi nexus', 'arey nexus', 'अरे nexus'];
+
 export default function VoiceInput({ onTranscript, apiUrl }: VoiceInputProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isWakeWordActive, setIsWakeWordActive] = useState(false);
   const [selectedLang, setSelectedLang] = useState('hi-IN');
   const [showLangPicker, setShowLangPicker] = useState(false);
   const [statusText, setStatusText] = useState('');
@@ -28,6 +31,7 @@ export default function VoiceInput({ onTranscript, apiUrl }: VoiceInputProps) {
   const audioChunksRef = useRef<Blob[]>([]);
   const analyzerRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
+  const wakeRecognitionRef = useRef<any>(null);
 
   const selectedOption = LANGUAGE_OPTIONS.find(l => l.code === selectedLang) || LANGUAGE_OPTIONS[0];
 
@@ -68,7 +72,7 @@ export default function VoiceInput({ onTranscript, apiUrl }: VoiceInputProps) {
     };
   }, [apiUrl, selectedLang, onTranscript]);
 
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
     try {
       setStatusText('Listening...');
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -79,7 +83,6 @@ export default function VoiceInput({ onTranscript, apiUrl }: VoiceInputProps) {
       source.connect(analyser);
       analyzerRef.current = analyser;
 
-      // Animate audio level ring
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       const animate = () => {
         analyser.getByteFrequencyData(dataArray);
@@ -99,10 +102,64 @@ export default function VoiceInput({ onTranscript, apiUrl }: VoiceInputProps) {
 
       recorder.start(100);
       setIsRecording(true);
+
+      // Auto stop recording after 5s if hands-free
+      setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          stopRecording();
+        }
+      }, 5000);
     } catch (err) {
-      setStatusText('Microphone access denied. Please allow mic permissions.');
+      setStatusText('Microphone access denied.');
     }
-  };
+  }, [stopRecording]);
+
+  // Hands-Free Wake-Word Listener ("Hey Nexus")
+  useEffect(() => {
+    if (!isWakeWordActive) {
+      if (wakeRecognitionRef.current) wakeRecognitionRef.current.stop();
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setStatusText('Browser Web Speech API unavailable for wake-word.');
+      setIsWakeWordActive(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    wakeRecognitionRef.current = recognition;
+
+    recognition.onresult = (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript.toLowerCase().strip ? event.results[i][0].transcript.toLowerCase().strip() : event.results[i][0].transcript.toLowerCase();
+        if (WAKE_WORDS.some(w => transcript.includes(w))) {
+          setStatusText('🎙 Wake Word "Hey Nexus" Detected!');
+          if (!isRecording && !isProcessing) {
+            startRecording();
+          }
+        }
+      }
+    };
+
+    recognition.onerror = () => {};
+    recognition.onend = () => {
+      if (isWakeWordActive) recognition.start();
+    };
+
+    try {
+      recognition.start();
+      setStatusText('Listening for "Hey Nexus"...');
+    } catch {}
+
+    return () => {
+      try { recognition.stop(); } catch {}
+    };
+  }, [isWakeWordActive, isRecording, isProcessing, startRecording]);
 
   const handleToggle = () => {
     if (isProcessing) return;
@@ -145,9 +202,22 @@ export default function VoiceInput({ onTranscript, apiUrl }: VoiceInputProps) {
         )}
       </div>
 
-      {/* Voice Capture Button */}
+      {/* Hands-Free Wake-Word Toggle ("Hey Nexus") */}
+      <button
+        onClick={() => setIsWakeWordActive(!isWakeWordActive)}
+        title={isWakeWordActive ? 'Disable Wake Word' : 'Enable Wake Word ("Hey Nexus")'}
+        className={`flex items-center gap-1.5 px-3 py-2 border rounded-xl text-xs font-mono transition-all ${
+          isWakeWordActive
+            ? 'bg-emerald-950/80 border-emerald-500 text-emerald-400 ring-2 ring-emerald-500/30'
+            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+        }`}
+      >
+        <Radio className={`w-3.5 h-3.5 ${isWakeWordActive ? 'animate-pulse text-emerald-400' : 'text-slate-500'}`} />
+        <span>{isWakeWordActive ? '"Hey Nexus" ON' : 'Wake Word'}</span>
+      </button>
+
+      {/* Push-to-Talk Mic Button */}
       <div className="relative flex items-center justify-center">
-        {/* Audio level ring animation */}
         {isRecording && (
           <span
             className="absolute inset-0 rounded-full bg-red-500/20 border-2 border-red-500/50 transition-transform duration-100"
@@ -178,7 +248,7 @@ export default function VoiceInput({ onTranscript, apiUrl }: VoiceInputProps) {
 
       {/* Status Text */}
       {statusText && (
-        <div className="text-xs font-mono text-slate-400 max-w-[200px] truncate">
+        <div className="text-xs font-mono text-slate-400 max-w-[220px] truncate">
           {isRecording && <span className="text-red-400 mr-1">●</span>}
           {isProcessing && <span className="text-cyan-400 mr-1">◎</span>}
           {statusText}
