@@ -71,9 +71,9 @@ export default function VoiceOverlay({
       {/* Top Header Bar */}
       <div className="absolute top-6 left-6 right-6 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Shield className="w-4 h-4 text-cyan-400" />
+          <Shield className="w-4 h-4 text-pink-400" />
           <span className="text-xs tracking-widest uppercase text-slate-400">
-            JARVIS Holographic Voice HUD • Boss Edition
+            JARVIS Holographic Voice HUD • Smooth Female Voice AI • Boss Edition
           </span>
         </div>
         <button

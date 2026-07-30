@@ -45,14 +45,26 @@ export default function Home() {
   const [showBrief, setShowBrief] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
 
-  // Automatic Voice Speech Output
+  // Automatic Smooth Female Voice Speech Output
   const speakText = useCallback((text: string) => {
     if (!isVoiceOutputEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     window.speechSynthesis.cancel(); // Stop current speech
+
     const cleanText = text.replace(/[*#_`]/g, '').replace(/https?:\/\/\S+/g, 'link').slice(0, 300);
     const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = 1.05;
-    utterance.pitch = 0.95; // Confident calm voice
+
+    // Find smooth female voice
+    const voices = window.speechSynthesis.getVoices();
+    const femaleVoice = voices.find(v =>
+      /female|zira|samantha|victoria|karen|fiona|moira|google uk english female|google us english female/i.test(v.name)
+    ) || voices.find(v => v.lang.includes('en') && !/male|david|george|mark/i.test(v.name));
+
+    if (femaleVoice) {
+      utterance.voice = femaleVoice;
+    }
+
+    utterance.rate = 1.0;
+    utterance.pitch = 1.15; // Elegant, smooth female tone
     window.speechSynthesis.speak(utterance);
   }, [isVoiceOutputEnabled]);
 
