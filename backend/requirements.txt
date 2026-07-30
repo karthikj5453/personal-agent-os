@@ -14,13 +14,14 @@ langchain>=0.1.12
 langchain-core>=0.1.30
 langchain-openai>=0.1.0
 
-# WebSocket support
+# Document & YouTube Summarizer
+youtube-transcript-api>=0.6.2
+pypdf>=4.1.0
+beautifulsoup4>=4.12.3
+
+# WebSocket & System
 websockets>=15.0.0
-
-# Audio processing
 python-multipart>=0.0.9
-
-# APScheduler for morning brief
 apscheduler>=3.10.4
 
 # Testing

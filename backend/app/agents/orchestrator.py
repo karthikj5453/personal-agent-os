@@ -1,10 +1,13 @@
 """
 NEXUS Orchestrator — LangGraph Supervisor with Real GPT-4o-mini Intent Classification
 
-Routing categories:
-  - EMAIL_TASK   → EmailSubagent (list, search, read, draft, send)
-  - SYSTEM_TASK  → SystemSubagent (volume, brightness, launch app, play music, lock system)
-  - GENERAL_QUERY → Direct LLM response from Supervisor
+Full 5-Agent Swarm Topology:
+  - EMAIL_TASK    → EmailSubagent
+  - SYSTEM_TASK   → SystemSubagent
+  - RESEARCH_TASK → ResearchSubagent (YouTube, PDF, Web Search)
+  - WHATSAPP_TASK → WhatsAppSubagent (Gated Messaging)
+  - VISION_TASK   → VisionSubagent (Mood & Emotion Detection)
+  - GENERAL_QUERY → Direct LLM Response
 """
 
 import json
@@ -16,6 +19,9 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from app.agents.state import AgentState, AgentLogEntry
 from app.agents.email_agent import run_email_agent
 from app.agents.system_agent import run_system_agent
+from app.agents.research_agent import run_research_agent
+from app.agents.whatsapp_agent import run_whatsapp_agent
+from app.agents.vision_agent import run_vision_agent
 from app.core.config import settings
 
 _llm_available = bool(settings.OPENAI_API_KEY and settings.OPENAI_API_KEY != "your_openai_api_key_here")
@@ -30,26 +36,23 @@ else:
     llm = None
 
 SUPERVISOR_SYSTEM_PROMPT = """
-You are NEXUS Supervisor (Ops) — an intelligent routing agent for a Personal Agent OS.
+You are NEXUS Supervisor (Ops) — an intelligent routing supervisor for a Personal Agent OS.
 
-Given the user's natural language command (in English, Hindi, Telugu, Tamil, Kannada, or code-switched Hinglish), classify the intent and extract a structured routing decision.
-
-Respond ONLY with valid JSON in this exact schema:
+Classify the user's natural language command into one of these exact intent categories:
 {
-  "intent": "EMAIL_TASK" | "SYSTEM_TASK" | "CALENDAR_TASK" | "RESEARCH_TASK" | "GENERAL_QUERY",
-  "action": "list_unread" | "search" | "draft" | "send" | "volume" | "brightness" | "launch_app" | "play_media" | "lock_system" | "none",
-  "reasoning": "<1-2 sentence explanation>",
-  "extracted_params": {
-    "target": "<target app, song query, email recipient, or volume level>",
-    "numeric_value": <number if volume or brightness, else null>
-  }
+  "intent": "EMAIL_TASK" | "SYSTEM_TASK" | "RESEARCH_TASK" | "WHATSAPP_TASK" | "VISION_TASK" | "GENERAL_QUERY",
+  "reasoning": "<1-2 sentence explanation>"
 }
 
-Rules:
-- Email/inbox/mail/message/draft/send/Sarah/reply → EMAIL_TASK
-- Volume/sound/brightness/light/open app/launch/play song/youtube/spotify/lock screen → SYSTEM_TASK
+Routing Rules:
+- Email/inbox/mail/msg/draft/send email/Sarah/reply → EMAIL_TASK
+- Volume/sound/brightness/open app/launch/play song/youtube play/spotify/lock screen → SYSTEM_TASK
+- Summarize youtube/youtube transcript/summarize pdf/pdf document/search web/find research → RESEARCH_TASK
+- Whatsapp/send whatsapp/message rahul/chat whatsapp → WHATSAPP_TASK
+- Mood/emotion/check mood/how do I look/webcam emotion → VISION_TASK
 - Anything else → GENERAL_QUERY
-- Support Indic commands (e.g. "volume 50 percent kar do", "A.R. Rahman play karo", "inbox check karo")
+
+Support Indic and Hinglish commands (e.g. "youtube summary dikhao", "whatsapp pe message bhejo", "mera mood check karo").
 """
 
 
@@ -71,29 +74,17 @@ def _classify_intent_llm(query: str) -> Dict[str, Any]:
 
 def _classify_intent_fallback(query: str) -> Dict[str, Any]:
     q = query.lower()
-    email_keywords = ["email", "inbox", "mail", "msg", "draft", "sarah", "reply", "unread", "send"]
-    system_keywords = ["volume", "sound", "brightness", "light", "open", "launch", "play", "youtube", "spotify", "lock", "kholo", "खोलो"]
-
-    if any(k in q for k in system_keywords):
-        return {
-            "intent": "SYSTEM_TASK",
-            "action": "system_control",
-            "reasoning": "Keyword-based system task classification.",
-            "extracted_params": {}
-        }
-    if any(k in q for k in email_keywords):
-        return {
-            "intent": "EMAIL_TASK",
-            "action": "email_control",
-            "reasoning": "Keyword-based email task classification.",
-            "extracted_params": {}
-        }
-    return {
-        "intent": "GENERAL_QUERY",
-        "action": "none",
-        "reasoning": "No matching subagent keywords found.",
-        "extracted_params": {}
-    }
+    if any(k in q for k in ["whatsapp", "wa msg"]):
+        return {"intent": "WHATSAPP_TASK", "reasoning": "WhatsApp keyword fallback."}
+    if any(k in q for k in ["mood", "emotion", "webcam"]):
+        return {"intent": "VISION_TASK", "reasoning": "Vision keyword fallback."}
+    if any(k in q for k in ["youtube", "summary", "pdf", "research", "search web"]):
+        return {"intent": "RESEARCH_TASK", "reasoning": "Research keyword fallback."}
+    if any(k in q for k in ["volume", "brightness", "open", "launch", "play", "lock"]):
+        return {"intent": "SYSTEM_TASK", "reasoning": "System keyword fallback."}
+    if any(k in q for k in ["email", "inbox", "mail", "draft", "send"]):
+        return {"intent": "EMAIL_TASK", "reasoning": "Email keyword fallback."}
+    return {"intent": "GENERAL_QUERY", "reasoning": "General query fallback."}
 
 
 def supervisor_node(state: AgentState) -> Dict[str, Any]:
@@ -119,24 +110,29 @@ def supervisor_node(state: AgentState) -> Dict[str, Any]:
             method = "keyword-fallback"
     except Exception as e:
         classification = _classify_intent_fallback(user_query)
-        method = f"fallback (LLM error: {str(e)[:80]})"
+        method = f"fallback (LLM error: {str(e)[:60]})"
 
     intent = classification.get("intent", "GENERAL_QUERY")
-    action = classification.get("action", "none")
     reasoning = classification.get("reasoning", "")
 
     logs.append(AgentLogEntry(
         agent="Supervisor (Ops)",
         action=f"intent_classified [{method}]",
-        details=f"Intent={intent} | Action={action} | Reason: {reasoning}",
+        details=f"Intent={intent} | Reason: {reasoning}",
         timestamp=timestamp,
         requires_consent=False
     ))
 
-    if intent == "EMAIL_TASK":
-        next_step = "EmailSubagent"
-    elif intent == "SYSTEM_TASK":
-        next_step = "SystemSubagent"
+    intent_map = {
+        "EMAIL_TASK": "EmailSubagent",
+        "SYSTEM_TASK": "SystemSubagent",
+        "RESEARCH_TASK": "ResearchSubagent",
+        "WHATSAPP_TASK": "WhatsAppSubagent",
+        "VISION_TASK": "VisionSubagent",
+    }
+
+    if intent in intent_map:
+        next_step = intent_map[intent]
     else:
         direct_response = None
         if _llm_available and llm is not None:
@@ -182,18 +178,24 @@ def response_merger_node(state: AgentState) -> Dict[str, Any]:
 
 def route_next_step(state: AgentState) -> str:
     next_step = state.get("next_step", "FINISH")
-    if next_step == "EmailSubagent":
-        return "email_subagent"
-    if next_step == "SystemSubagent":
-        return "system_subagent"
-    return "response_merger"
+    routing = {
+        "EmailSubagent": "email_subagent",
+        "SystemSubagent": "system_subagent",
+        "ResearchSubagent": "research_subagent",
+        "WhatsAppSubagent": "whatsapp_subagent",
+        "VisionSubagent": "vision_subagent",
+    }
+    return routing.get(next_step, "response_merger")
 
 
-# LangGraph StateGraph Assembly
+# StateGraph Assembly
 builder = StateGraph(AgentState)
 builder.add_node("supervisor", supervisor_node)
 builder.add_node("email_subagent", run_email_agent)
 builder.add_node("system_subagent", run_system_agent)
+builder.add_node("research_subagent", run_research_agent)
+builder.add_node("whatsapp_subagent", run_whatsapp_agent)
+builder.add_node("vision_subagent", run_vision_agent)
 builder.add_node("response_merger", response_merger_node)
 
 builder.set_entry_point("supervisor")
@@ -204,12 +206,16 @@ builder.add_conditional_edges(
     {
         "email_subagent": "email_subagent",
         "system_subagent": "system_subagent",
+        "research_subagent": "research_subagent",
+        "whatsapp_subagent": "whatsapp_subagent",
+        "vision_subagent": "vision_subagent",
         "response_merger": "response_merger"
     }
 )
 
-builder.add_edge("email_subagent", "response_merger")
-builder.add_edge("system_subagent", "response_merger")
+for node in ["email_subagent", "system_subagent", "research_subagent", "whatsapp_subagent", "vision_subagent"]:
+    builder.add_edge(node, "response_merger")
+
 builder.add_edge("response_merger", END)
 
 orchestrator_graph = builder.compile()
