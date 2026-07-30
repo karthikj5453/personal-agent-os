@@ -1,17 +1,15 @@
 """
-HEY Nexus Orchestrator — LangGraph Supervisor with "Boss" Persona & GPT-4o-mini Routing
+HEY Nexus Orchestrator — LangGraph Supervisor with "Boss" Persona, Memory, & Coding Swarm
 
-Persona Rules:
-  - Wake Word: "HEY Nexus" / "Nexus" → Immediate response: "Hey Boss."
-  - Greeting / Direct Response: Always address the user as "Boss".
-  - Tone: Professional, concise, calm, confident.
-
-5-Agent Swarm Topology:
+Routing Categories:
+  - WAKE_WORD     → Direct "Hey Boss." response
   - EMAIL_TASK    → EmailSubagent
-  - SYSTEM_TASK   → SystemSubagent
+  - SYSTEM_TASK   → SystemSubagent (Volume, Brightness, Apps, Hardware Specs)
   - RESEARCH_TASK → ResearchSubagent (YouTube, PDF, Web Search)
   - WHATSAPP_TASK → WhatsAppSubagent (Gated Messaging)
   - VISION_TASK   → VisionSubagent (Mood & Emotion Detection)
+  - CODING_TASK   → CodingSubagent (Python Sandbox Execution, Git Auto-Commit)
+  - MEMORY_TASK   → Memory Engine (Remember / Recall for Boss)
   - GENERAL_QUERY → Direct LLM Response ("Boss" persona)
 """
 
@@ -27,6 +25,8 @@ from app.agents.system_agent import run_system_agent
 from app.agents.research_agent import run_research_agent
 from app.agents.whatsapp_agent import run_whatsapp_agent
 from app.agents.vision_agent import run_vision_agent
+from app.agents.coding_agent import run_coding_agent
+from app.agents.tools.memory_tools import remember_info_tool, recall_memory_tool
 from app.core.config import settings
 
 _llm_available = bool(settings.OPENAI_API_KEY and settings.OPENAI_API_KEY != "your_openai_api_key_here")
@@ -50,20 +50,22 @@ MANDATORY PERSONA RULES:
 
 Classify the user's natural language command into one of these exact intent categories:
 {
-  "intent": "WAKE_WORD" | "EMAIL_TASK" | "SYSTEM_TASK" | "RESEARCH_TASK" | "WHATSAPP_TASK" | "VISION_TASK" | "GENERAL_QUERY",
+  "intent": "WAKE_WORD" | "EMAIL_TASK" | "SYSTEM_TASK" | "RESEARCH_TASK" | "WHATSAPP_TASK" | "VISION_TASK" | "CODING_TASK" | "MEMORY_TASK" | "GENERAL_QUERY",
   "reasoning": "<1-2 sentence explanation>"
 }
 
 Routing Rules:
 - "HEY Nexus", "Nexus", "Hey Boss", "wake up" → WAKE_WORD
 - Email/inbox/mail/msg/draft/send email/Sarah/reply → EMAIL_TASK
-- Volume/sound/brightness/open app/launch/play song/youtube play/spotify/lock screen → SYSTEM_TASK
+- Volume/sound/brightness/open app/launch/play song/youtube play/spotify/lock screen/hardware/cpu/ram → SYSTEM_TASK
 - Summarize youtube/youtube transcript/summarize pdf/pdf document/search web/find research → RESEARCH_TASK
 - Whatsapp/send whatsapp/message rahul/chat whatsapp → WHATSAPP_TASK
 - Mood/emotion/check mood/how do I look/webcam emotion → VISION_TASK
+- Write code/run python/script/execute code/git commit/push github → CODING_TASK
+- Remember/recall/my favorite/what is my/store memory → MEMORY_TASK
 - Anything else → GENERAL_QUERY
 
-Support Indic and Hinglish commands (e.g. "hey nexus mera inbox check karo", "boss volume 50 percent kar do").
+Support Indic and Hinglish commands.
 """
 
 
@@ -87,13 +89,17 @@ def _classify_intent_fallback(query: str) -> Dict[str, Any]:
     q = query.lower().strip()
     if q in ["hey nexus", "nexus", "hey boss", "hi nexus"]:
         return {"intent": "WAKE_WORD", "reasoning": "Wake word detected."}
+    if any(k in q for k in ["remember", "recall", "favorite"]):
+        return {"intent": "MEMORY_TASK", "reasoning": "Memory keyword fallback."}
+    if any(k in q for k in ["code", "python", "script", "git commit"]):
+        return {"intent": "CODING_TASK", "reasoning": "Coding keyword fallback."}
     if any(k in q for k in ["whatsapp", "wa msg"]):
         return {"intent": "WHATSAPP_TASK", "reasoning": "WhatsApp keyword fallback."}
     if any(k in q for k in ["mood", "emotion", "webcam"]):
         return {"intent": "VISION_TASK", "reasoning": "Vision keyword fallback."}
     if any(k in q for k in ["youtube", "summary", "pdf", "research", "search web"]):
         return {"intent": "RESEARCH_TASK", "reasoning": "Research keyword fallback."}
-    if any(k in q for k in ["volume", "brightness", "open", "launch", "play", "lock"]):
+    if any(k in q for k in ["volume", "brightness", "open", "launch", "play", "lock", "cpu", "ram", "hardware"]):
         return {"intent": "SYSTEM_TASK", "reasoning": "System keyword fallback."}
     if any(k in q for k in ["email", "inbox", "mail", "draft", "send"]):
         return {"intent": "EMAIL_TASK", "reasoning": "Email keyword fallback."}
@@ -138,18 +144,27 @@ def supervisor_node(state: AgentState) -> Dict[str, Any]:
 
     # Wake Word response
     if intent == "WAKE_WORD":
-        logs.append(AgentLogEntry(
-            agent="Supervisor (Ops)",
-            action="wake_word_ack",
-            details="Acknowledged HEY Nexus wake word -> Returning 'Hey Boss.'",
-            timestamp=timestamp,
-            requires_consent=False
-        ))
         return {
             "current_agent": "Supervisor (Ops)",
             "next_step": "FINISH",
             "logs": logs,
             "final_output": "Hey Boss. Systems are online and ready for your command."
+        }
+
+    # Memory handling node directly in supervisor
+    if intent == "MEMORY_TASK":
+        if "remember" in user_query.lower():
+            res = remember_info_tool.invoke({"key": "user_note", "content": user_query})
+            out = f"Boss, {res.get('message', 'Memory stored successfully.')}"
+        else:
+            res = recall_memory_tool.invoke({"query": user_query})
+            out = f"Boss, {res.get('message', 'Memory recall complete.')}"
+
+        return {
+            "current_agent": "Supervisor (Ops)",
+            "next_step": "FINISH",
+            "logs": logs,
+            "final_output": out
         }
 
     intent_map = {
@@ -158,6 +173,7 @@ def supervisor_node(state: AgentState) -> Dict[str, Any]:
         "RESEARCH_TASK": "ResearchSubagent",
         "WHATSAPP_TASK": "WhatsAppSubagent",
         "VISION_TASK": "VisionSubagent",
+        "CODING_TASK": "CodingSubagent",
     }
 
     if intent in intent_map:
@@ -215,6 +231,7 @@ def route_next_step(state: AgentState) -> str:
         "ResearchSubagent": "research_subagent",
         "WhatsAppSubagent": "whatsapp_subagent",
         "VisionSubagent": "vision_subagent",
+        "CodingSubagent": "coding_subagent",
     }
     return routing.get(next_step, "response_merger")
 
@@ -227,6 +244,7 @@ builder.add_node("system_subagent", run_system_agent)
 builder.add_node("research_subagent", run_research_agent)
 builder.add_node("whatsapp_subagent", run_whatsapp_agent)
 builder.add_node("vision_subagent", run_vision_agent)
+builder.add_node("coding_subagent", run_coding_agent)
 builder.add_node("response_merger", response_merger_node)
 
 builder.set_entry_point("supervisor")
@@ -240,11 +258,12 @@ builder.add_conditional_edges(
         "research_subagent": "research_subagent",
         "whatsapp_subagent": "whatsapp_subagent",
         "vision_subagent": "vision_subagent",
+        "coding_subagent": "coding_subagent",
         "response_merger": "response_merger"
     }
 )
 
-for node in ["email_subagent", "system_subagent", "research_subagent", "whatsapp_subagent", "vision_subagent"]:
+for node in ["email_subagent", "system_subagent", "research_subagent", "whatsapp_subagent", "vision_subagent", "coding_subagent"]:
     builder.add_edge(node, "response_merger")
 
 builder.add_edge("response_merger", END)
