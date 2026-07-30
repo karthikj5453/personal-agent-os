@@ -1,8 +1,42 @@
 import os
 import subprocess
 import webbrowser
+import psutil
 from typing import Dict, Any
 from langchain_core.tools import tool
+
+
+@tool
+def get_system_metrics_tool() -> Dict[str, Any]:
+    """
+    Read live desktop hardware metrics: CPU load %, RAM usage %, Disk usage %, and Battery.
+    """
+    try:
+        cpu = psutil.cpu_percent(interval=0.2)
+        mem = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        battery = psutil.sensors_battery()
+
+        battery_pct = battery.percent if battery else 100
+        is_plugged = battery.power_plugged if battery else True
+
+        message = (
+            f"💻 **Desktop System Hardware Metrics:**\n"
+            f"• CPU Load: **{cpu}%**\n"
+            f"• RAM Usage: **{mem.percent}%** ({round(mem.used / (1024**3), 1)}GB / {round(mem.total / (1024**3), 1)}GB)\n"
+            f"• Disk Usage: **{disk.percent}%** ({round(disk.free / (1024**3), 1)}GB Free)\n"
+            f"• Battery: **{battery_pct}%** ({'Plugged In' if is_plugged else 'On Battery'})"
+        )
+        return {
+            "status": "success",
+            "cpu_pct": cpu,
+            "ram_pct": mem.percent,
+            "disk_pct": disk.percent,
+            "battery_pct": battery_pct,
+            "message": message
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to read system metrics: {str(e)}"}
 
 
 @tool
@@ -14,11 +48,10 @@ def adjust_volume_tool(level: int) -> Dict[str, Any]:
     """
     level = max(0, min(100, level))
     try:
-        # Windows PowerShell command using SoundVolumeView / WMI / nircmd or PowerShell audio API
         ps_cmd = (
             f"$obj = New-Object -ComObject WScript.Shell; "
-            f"1..50 | ForEach-Object {{ $obj.SendKeys([char]174) }}; "  # volume down all the way
-            f"1..{int(level / 2)} | ForEach-Object {{ $obj.SendKeys([char]175) }}"  # volume up to target
+            f"1..50 | ForEach-Object {{ $obj.SendKeys([char]174) }}; "
+            f"1..{int(level / 2)} | ForEach-Object {{ $obj.SendKeys([char]175) }}"
         )
         subprocess.run(["powershell", "-Command", ps_cmd], capture_output=True, timeout=5)
         return {"status": "success", "message": f"System volume set to {level}%", "level": level}

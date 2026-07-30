@@ -36,11 +36,23 @@ export default function Home() {
   const [booting, setBooting] = useState(true);
   const [osMode, setOsMode] = useState<OSMode>('ALL');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [isVoiceOutputEnabled, setIsVoiceOutputEnabled] = useState(true);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
   const [morningBrief, setMorningBrief] = useState<MorningBrief | null>(null);
   const [showBrief, setShowBrief] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
+
+  // Automatic Voice Speech Output
+  const speakText = useCallback((text: string) => {
+    if (!isVoiceOutputEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel(); // Stop current speech
+    const cleanText = text.replace(/[*#_`]/g, '').replace(/https?:\/\/\S+/g, 'link').slice(0, 300);
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.05;
+    utterance.pitch = 0.95; // Confident calm voice
+    window.speechSynthesis.speak(utterance);
+  }, [isVoiceOutputEnabled]);
 
   // Agent Execution State
   const [prompt, setPrompt] = useState('HEY Nexus');
@@ -98,6 +110,7 @@ export default function Home() {
           setIsProcessing(false);
           setActiveNode(null);
 
+          if (final_output) speakText(final_output);
           if (consent_pending) fetchConsentLedger();
           fetchEmails();
         }
@@ -292,6 +305,19 @@ export default function Home() {
         {/* Top Header Actions */}
         <div className="flex items-center gap-3 flex-wrap">
           <button
+            onClick={() => setIsVoiceOutputEnabled(!isVoiceOutputEnabled)}
+            className={`px-3 py-2 border rounded-xl text-xs font-mono transition-all flex items-center gap-1.5 ${
+              isVoiceOutputEnabled
+                ? 'bg-emerald-950/60 border-emerald-500/50 text-emerald-400'
+                : 'bg-slate-900 border-slate-800 text-slate-500'
+            }`}
+            title={isVoiceOutputEnabled ? 'Voice Audio Speech ON' : 'Voice Audio Speech Muted'}
+          >
+            <Volume2 className={`w-3.5 h-3.5 ${isVoiceOutputEnabled ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`} />
+            {isVoiceOutputEnabled ? 'Audio Speech ON' : 'Audio Muted'}
+          </button>
+
+          <button
             onClick={() => setIsCommandPaletteOpen(true)}
             className="px-3 py-2 bg-indigo-950/60 border border-indigo-500/30 rounded-xl text-xs font-mono text-indigo-300 hover:border-indigo-400 transition-all flex items-center gap-1.5 shadow-lg shadow-indigo-500/10"
           >
@@ -401,6 +427,7 @@ export default function Home() {
             <div className="h-5 w-px bg-slate-800" />
             {[
               { label: 'HEY Nexus Wake', q: 'HEY Nexus' },
+              { label: 'Hardware Specs', q: 'Read system hardware metrics and CPU RAM usage' },
               { label: 'Urgent Inbox', q: 'Check my inbox for urgent messages' },
               { label: 'Set Volume 50%', q: 'Volume 50 percent kar do' },
               { label: 'Summarize YouTube', q: 'Summarize youtube video https://youtube.com/watch?v=dQw4w9WgXcQ' },

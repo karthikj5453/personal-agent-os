@@ -8,6 +8,7 @@ from app.agents.tools.system_tools import (
     launch_app_tool,
     play_media_tool,
     lock_system_tool,
+    get_system_metrics_tool,
 )
 from app.services.consent_ledger import consent_ledger
 
@@ -61,6 +62,18 @@ def run_system_agent(state: AgentState) -> Dict[str, Any]:
             f"Locking workstation desktop requires your approval.\n"
             f"Consent ID: {pending_entry.id}"
         )
+
+    # --- SYSTEM METRICS (CPU / RAM / BATTERY) ---
+    elif any(k in query_lower for k in ["metrics", "cpu", "ram", "battery", "hardware", "specs", "system info"]):
+        res = get_system_metrics_tool.invoke({})
+        logs.append(AgentLogEntry(
+            agent="SystemSubagent",
+            action="tool_call:get_system_metrics",
+            details="Read live CPU, RAM, Disk, and Battery metrics",
+            timestamp=timestamp,
+            requires_consent=False
+        ))
+        output_summary = res.get("message", "System metrics retrieved.")
 
     # --- VOLUME ADJUSTMENT ---
     elif "volume" in query_lower or "sound" in query_lower or " आवाज" in query_lower or "звук" in query_lower:
