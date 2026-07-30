@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_URL: str = "redis://redis:6379/0"
 
+    # Sarvam AI (Indic Voice Pipeline)
+    SARVAM_API_KEY: str = ""
+    SARVAM_BASE_URL: str = "https://api.sarvam.ai"
+
+    # OpenAI (optional)
+    OPENAI_API_KEY: str = ""
+
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [
         "http://localhost:3000",

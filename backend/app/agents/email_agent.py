@@ -4,34 +4,82 @@ from app.agents.state import AgentState, AgentLogEntry
 from app.agents.tools.email_tools import (
     list_unread_emails_tool,
     search_emails_tool,
-    read_email_details_tool,
     create_email_draft_tool,
-    send_email_tool
 )
+from app.services.consent_ledger import consent_ledger
 
 
 def run_email_agent(state: AgentState) -> Dict[str, Any]:
-    """Email Subagent Node: Executes domain-specific email operations."""
+    """
+    Email Subagent Node: Executes domain-specific email operations.
+
+    Design:
+    - READ operations (list, search, read) → execute immediately.
+    - WRITE operations (send_email) → gate via Consent Ledger (Pillar 3).
+      The email is NOT sent automatically — a PENDING_APPROVAL entry is created
+      and the user must approve via the Mission Control UI or voice command.
+    """
     messages = state.get("messages", [])
     user_query = messages[-1]["content"] if messages else ""
     query_lower = user_query.lower()
-
-    logs = []
     timestamp = datetime.now().strftime("%H:%M:%S")
 
-    # 1. Log entry into Email Subagent (Observable Cognition)
+    logs = []
+    email_results = []
+    consent_pending = None
+
+    # Log activation
     logs.append(AgentLogEntry(
         agent="EmailSubagent",
         action="activated",
-        details=f"Processing email query: '{user_query}'",
+        details=f"Processing: '{user_query}'",
         timestamp=timestamp,
         requires_consent=False
     ))
 
-    email_results = []
+    # --- SEND ACTION → Consent Gate (Pillar 3) ---
+    if any(k in query_lower for k in ["send", "send email", "bhejo", "भेजो"]):
+        pending_entry = consent_ledger.create_pending_entry(
+            agent="EmailSubagent",
+            action_type="SEND_EMAIL",
+            target="sarah.ops@techcorp.io",
+            details={
+                "recipient": "sarah.ops@techcorp.io",
+                "subject": "Re: URGENT: Production API Rate Limit Spike in AP-South",
+                "body": (
+                    "Hi Sarah,\n\nApproved. Please proceed with doubling the Redis "
+                    "quota for AP-South. I'll monitor the dashboards and will ping "
+                    "if we see further anomalies.\n\nRegards"
+                )
+            },
+            reasoning=(
+                "User requested sending a reply to Sarah regarding the Redis rate limit spike. "
+                "This is an irreversible external communication and requires explicit user approval "
+                "before being dispatched per the VYUHA Accountable Autonomy policy (Pillar 3)."
+            )
+        )
+        consent_pending = pending_entry.model_dump()
 
-    # Check if query requests listing unread or urgent emails
-    if any(k in query_lower for k in ["unread", "inbox", "check", "mail", "email"]):
+        logs.append(AgentLogEntry(
+            agent="EmailSubagent",
+            action="consent_gate:SEND_EMAIL",
+            details=(
+                f"Action gated — PENDING_APPROVAL (ID: {pending_entry.id}). "
+                "Approve in Consent Ledger to dispatch email to sarah.ops@techcorp.io."
+            ),
+            timestamp=timestamp,
+            requires_consent=True
+        ))
+
+        output_summary = (
+            f"⚠ ACTION GATED — Consent Required\n"
+            f"Sending email to sarah.ops@techcorp.io requires your approval.\n"
+            f"Consent ID: {pending_entry.id}\n"
+            f"→ Approve or Reject in the Consent Ledger panel."
+        )
+
+    # --- LIST / CHECK UNREAD ---
+    elif any(k in query_lower for k in ["unread", "inbox", "check", "mail", "email", "dekho", "देखो"]):
         emails = list_unread_emails_tool.invoke({})
         email_results = emails
         urgent_count = sum(1 for e in emails if e.get("priority") == "high")
@@ -44,29 +92,41 @@ def run_email_agent(state: AgentState) -> Dict[str, Any]:
             requires_consent=False
         ))
 
-        output_summary = f"Found {len(emails)} unread emails ({urgent_count} high priority):\n"
+        output_summary = f"📬 Found {len(emails)} unread emails ({urgent_count} high priority):\n\n"
         for idx, email in enumerate(emails, 1):
-            output_summary += f"{idx}. [{email['priority'].upper()}] From: {email['sender']} | Subject: {email['subject']}\n"
+            output_summary += (
+                f"{idx}. [{email['priority'].upper()}] "
+                f"From: {email['sender']}\n"
+                f"   Subject: {email['subject']}\n"
+            )
 
-    # Check if query requests drafting a reply
-    elif "draft" in query_lower or "reply" in query_lower:
+    # --- DRAFT EMAIL ---
+    elif any(k in query_lower for k in ["draft", "reply", "likho", "लिखो"]):
         draft = create_email_draft_tool.invoke({
             "recipient": "sarah.ops@techcorp.io",
             "subject": "Re: URGENT: Production API Rate Limit Spike in AP-South",
-            "body": "Hi Sarah,\n\nI have reviewed the rate limit spike in AP-South. Quota increase to Redis cluster approved. Proceed with scaling."
+            "body": (
+                "Hi Sarah,\n\nI have reviewed the rate limit spike in AP-South. "
+                "Redis quota increase is approved. Please proceed with scaling."
+            )
         })
         logs.append(AgentLogEntry(
             agent="EmailSubagent",
             action="tool_call:create_email_draft",
-            details=f"Created draft to {draft.get('recipient')}",
+            details=f"Draft created for {draft.get('recipient')}",
             timestamp=timestamp,
             requires_consent=False
         ))
-        output_summary = f"Draft created for {draft.get('recipient')}:\nSubject: {draft.get('subject')}\nBody: {draft.get('body')}"
+        output_summary = (
+            f"✏ Draft Created\n"
+            f"To: {draft.get('recipient')}\n"
+            f"Subject: {draft.get('subject')}\n\n"
+            f"{draft.get('body')}"
+        )
 
-    # Search fallback
+    # --- SEARCH FALLBACK ---
     else:
-        term = query_lower.replace("search", "").replace("find", "").strip()
+        term = query_lower.strip()
         emails = search_emails_tool.invoke({"query": term or "urgent"})
         email_results = emails
         logs.append(AgentLogEntry(
@@ -76,14 +136,15 @@ def run_email_agent(state: AgentState) -> Dict[str, Any]:
             timestamp=timestamp,
             requires_consent=False
         ))
-        output_summary = f"Search results for '{term}':\n"
+        output_summary = f"🔍 Search results for '{term}':\n"
         for email in emails:
-            output_summary += f"- [{email['id']}] From {email['sender']}: {email['subject']}\n"
+            output_summary += f"- [{email['id']}] {email['sender']}: {email['subject']}\n"
 
     return {
         "current_agent": "EmailSubagent",
         "next_step": "Supervisor",
         "email_context": email_results,
         "logs": logs,
+        "consent_pending": consent_pending,
         "final_output": output_summary
     }
