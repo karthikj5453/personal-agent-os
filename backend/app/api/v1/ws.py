@@ -52,7 +52,7 @@ async def agent_stream_ws(websocket: WebSocket):
         await manager.send_event(websocket, {
             "type": "connected",
             "payload": {
-                "message": "VYUHA WebSocket stream connected",
+                "message": "NEXUS WebSocket stream connected",
                 "timestamp": datetime.now().isoformat()
             }
         })

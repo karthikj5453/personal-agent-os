@@ -55,7 +55,7 @@ def run_email_agent(state: AgentState) -> Dict[str, Any]:
             reasoning=(
                 "User requested sending a reply to Sarah regarding the Redis rate limit spike. "
                 "This is an irreversible external communication and requires explicit user approval "
-                "before being dispatched per the VYUHA Accountable Autonomy policy (Pillar 3)."
+                "before being dispatched per the NEXUS Accountable Autonomy policy (Pillar 3)."
             )
         )
         consent_pending = pending_entry.model_dump()

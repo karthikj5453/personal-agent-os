@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'VYUHA | Personal Agent OS',
-  description: 'Observable cognition, code-switched voice control, and accountable autonomy',
+  title: 'NEXUS | Personal Agent OS',
+  description: 'Observable cognition, code-switched voice control, and accountable autonomy — by NEXUS',
 };
 
 export default function RootLayout({

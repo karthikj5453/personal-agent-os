@@ -28,7 +28,7 @@ def generate_morning_brief(language_code: str = "en-IN") -> Dict[str, Any]:
     # 3. Build brief text
     sections = []
 
-    sections.append(f"Good morning! Here is your VYUHA Intelligence Brief for {timestamp}.")
+    sections.append(f"Good morning! Here is your NEXUS Intelligence Brief for {timestamp}.")
 
     if urgent_emails:
         sections.append(
@@ -51,7 +51,7 @@ def generate_morning_brief(language_code: str = "en-IN") -> Dict[str, Any]:
         sections.append("\n✅ No pending consent gates.")
 
     sections.append(
-        "\nVYUHA is ready and monitoring all channels. Have a productive day."
+        "\nNEXUS is ready and monitoring all channels. Have a productive day."
     )
 
     brief_text = "\n".join(sections)
