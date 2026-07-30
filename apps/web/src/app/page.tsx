@@ -7,6 +7,8 @@ import TerminalStrip, { LogEntry } from '@/components/TerminalStrip';
 import EmailInspector, { EmailItem } from '@/components/EmailInspector';
 import ConsentLedger, { ConsentEntry } from '@/components/ConsentLedger';
 import VoiceInput from '@/components/VoiceInput';
+import WebcamFeed from '@/components/WebcamFeed';
+import { Camera } from 'lucide-react';
 
 interface HealthData {
   status: string;
@@ -31,6 +33,7 @@ export default function Home() {
   const [healthLoading, setHealthLoading] = useState(true);
   const [morningBrief, setMorningBrief] = useState<MorningBrief | null>(null);
   const [showBrief, setShowBrief] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
 
   // Agent Execution State
   const [prompt, setPrompt] = useState('Check my inbox for urgent messages');
@@ -234,6 +237,13 @@ export default function Home() {
         </div>
       )}
 
+      {/* Webcam Feed Modal */}
+      {showCamera && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <WebcamFeed apiUrl={API_URL} onClose={() => setShowCamera(false)} />
+        </div>
+      )}
+
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center pb-6 border-b border-slate-800/80 gap-4">
         <div>
@@ -261,6 +271,9 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={() => setShowCamera(!showCamera)} className="px-3 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs font-mono text-slate-300 hover:text-pink-400 hover:border-pink-500/30 transition-colors flex items-center gap-1.5">
+            <Camera className="w-3.5 h-3.5 text-pink-400" /> Camera Feed
+          </button>
           <button onClick={fetchMorningBrief} className="px-3 py-2 bg-slate-900/90 border border-slate-800 rounded-xl text-xs font-mono text-slate-300 hover:text-yellow-400 hover:border-yellow-500/30 transition-colors flex items-center gap-1.5">
             <Sun className="w-3.5 h-3.5 text-yellow-400" /> Morning Brief
           </button>
